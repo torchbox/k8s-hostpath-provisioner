@@ -1,5 +1,5 @@
 hash: 2f508e858589dfdebe7374ae62aa03d2aad9252938ae1d1cf66db54f246b5c22
-updated: 2017-10-07T17:05:37.879083723+01:00
+updated: 2017-10-07T20:11:13.409911874+01:00
 imports:
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
@@ -62,6 +62,8 @@ imports:
   - jwriter
 - name: github.com/pborman/uuid
   version: ca53cad383cad2479bbba7f7a1a05797ec1386e4
+- name: github.com/pkg/xattr
+  version: 56ed87199ebaabcb1b3bfae3c1fb0affaabc3287
 - name: github.com/PuerkitoBio/purell
   version: 8a290539e2e8629dbc4e6bad948158f790ec31f4
 - name: github.com/PuerkitoBio/urlesc

@@ -24,11 +24,13 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
+	"github.com/pkg/xattr"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -48,8 +50,14 @@ const (
 
 /* Our provisioner class, which implements the controller API. */
 type hostPathProvisioner struct {
-	client   kubernetes.Interface
-	identity string /* Our unique provisioner identity */
+	client   kubernetes.Interface /* Kubernetes client for accessing the cluster during provision */
+	identity string               /* Our unique provisioner identity */
+}
+
+/* Storage the parsed configuration from the storage class */
+type hostPathParameters struct {
+	pvDir       string /* On-disk path of the PV root */
+	cephFSQuota bool   /* Whether to set CephFS quota xattrs */
 }
 
 /*
@@ -73,15 +81,39 @@ func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.P
 	/*
 	 * Fetch the PV root directory from the PV storage class.
 	 */
-	pvDir, err := p.parseParameters(options.Parameters)
+	params, err := p.parseParameters(options.Parameters)
 	if err != nil {
 		return nil, err
 	}
 
+	/*
+	 * Extract the PV capacity as bytes.  We can use this to set CephFS
+	 * quotas.
+	 */
+	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	volbytes := capacity.Value()
+	glog.Infof("pv storage: %+v", volbytes)
+
+	if volbytes <= 0 {
+		return nil, fmt.Errorf("storage capacity must be >= 0 (not %+v)", capacity.String())
+	}
+
 	/* Create the on-disk directory. */
-	path := path.Join(pvDir, options.PVName)
+	path := path.Join(params.pvDir, options.PVName)
 	if err := os.MkdirAll(path, 0777); err != nil {
+		glog.Errorf("failed to mkdir %s: %s", path, err)
 		return nil, err
+	}
+
+	/* Set CephFS quota, if enabled */
+	if params.cephFSQuota {
+		err := xattr.Set(path, "ceph.quota.max_bytes", []byte(strconv.FormatInt(volbytes, 10)))
+		if err != nil {
+			glog.Errorf("could not set CephFS quota on %s (%s): %s",
+				options.PVName, path, err)
+			os.RemoveAll(path)
+			return nil, err
+		}
 	}
 
 	/* The actual PV we will create */
@@ -138,7 +170,7 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 		return err
 	}
 
-	pvDir, err := p.parseParameters(class.Parameters)
+	params, err := p.parseParameters(class.Parameters)
 	if err != nil {
 		return err
 	}
@@ -147,7 +179,7 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 	 * Construct the on-disk path based on the pvDir and volume name, then
 	 * delete it.
 	 */
-	path := path.Join(pvDir, volume.Name)
+	path := path.Join(params.pvDir, volume.Name)
 	if err := os.RemoveAll(path); err != nil {
 		glog.Errorf("failed to remove PV %s (%s): %v",
 			volume.Name, path, err)
@@ -157,23 +189,34 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 	return nil
 }
 
-func (p *hostPathProvisioner) parseParameters(parameters map[string]string) (string, error) {
-	var pvDir string
+func (p *hostPathProvisioner) parseParameters(parameters map[string]string) (*hostPathParameters, error) {
+	var params hostPathParameters
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case "pvdir":
-			pvDir = v
+			params.pvDir = v
+
+		case "cephfsquota":
+			switch v {
+			case "true":
+				params.cephFSQuota = true
+			case "false":
+				params.cephFSQuota = false
+			default:
+				return nil, fmt.Errorf("invalid value for cephFSQuota: %s (should be true or false)", v)
+			}
+
 		default:
-			return "", fmt.Errorf("invalid option %q", k)
+			return nil, fmt.Errorf("invalid option %q", k)
 		}
 	}
 
-	if pvDir == "" {
-		return "", fmt.Errorf("missing PV directory (pvDir)")
+	if params.pvDir == "" {
+		return nil, fmt.Errorf("missing PV directory (pvDir)")
 	}
 
-	return pvDir, nil
+	return &params, nil
 }
 
 var (
