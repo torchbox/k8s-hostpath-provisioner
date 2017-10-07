@@ -1,0 +1,16 @@
+package: k8s-hostpath-provisioner
+import:
+- package: github.com/golang/glog
+- package: github.com/kubernetes-incubator/external-storage
+  version: ^3.0.0-beta.2
+  subpackages:
+  - lib/controller
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/apis/meta/v1
+  - pkg/util/wait
+- package: k8s.io/client-go
+  subpackages:
+  - kubernetes
+  - pkg/api/v1
+  - rest
