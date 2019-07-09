@@ -104,6 +104,10 @@ func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.P
 		glog.Errorf("failed to mkdir %s: %s", path, err)
 		return nil, err
 	}
+	if err := os.Chmod(path, 0777); err != nil {
+		glog.Errorf("failed to chmod %s, %s", path, err)
+		return nil, err
+	}
 
 	/* Set CephFS quota, if enabled */
 	if params.cephFSQuota {
