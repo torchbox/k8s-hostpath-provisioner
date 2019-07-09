@@ -109,3 +109,13 @@ spec:
           requests:
             cpu: 100m
             memory: 64Mi
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: cephfs
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: torchbox.com/hostpath
+parameters:
+  pvDir: /ceph/pvs
