@@ -88,20 +88,18 @@ spec:
 
     spec:
       serviceAccountName: hostpath-provisioner
-
       volumes:
       - name: volumes
         hostPath:
-          path: /volumes
+          path: /mnt/cephfs/
 
       containers:
       - name: hostpath-provisioner
-        image: torchbox/k8s-hostpath-provisioner:latest
-
+        image: roruk/hostpath-provisioner
+        imagePullPolicy: Always
         volumeMounts:
         - name: volumes
-          mountPath: /volumes
-
+          mountPath: /mnt/cephfs
         resources:
           limits:
             cpu: 100m
@@ -109,7 +107,9 @@ spec:
           requests:
             cpu: 100m
             memory: 64Mi
+
 ---
+
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -118,4 +118,4 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: torchbox.com/hostpath
 parameters:
-  pvDir: /ceph/pvs
+  pvDir: /mnt/cephfs
