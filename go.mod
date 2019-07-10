@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/PuerkitoBio/purell v1.0.0
 	github.com/PuerkitoBio/urlesc v0.0.0-20160726150825-5bd2802263f2
-	github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2
+	github.com/davecgh/go-spew v1.1.0
 	github.com/emicklei/go-restful v0.0.0-20170410110728-ff4f55a20633
 	github.com/emicklei/go-restful-swagger12 v0.0.0-20170208215640-dcef7f557305
 	github.com/ghodss/yaml v0.0.0-20150909031657-73d445a93680
@@ -28,6 +28,7 @@ require (
 	github.com/pborman/uuid v0.0.0-20150603214016-ca53cad383ca
 	github.com/pkg/xattr v0.0.0-20170808190211-56ed87199eba
 	github.com/spf13/pflag v0.0.0-20161024131444-5ccb023bc27d
+	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/ugorji/go v0.0.0-20170107133203-ded73eae5db7
 	golang.org/x/crypto v0.0.0-20161006174701-d172538b2cfc
 	golang.org/x/net v0.0.0-20170114055629-f2499483f923
