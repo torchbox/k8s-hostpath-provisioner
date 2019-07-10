@@ -28,17 +28,18 @@ import (
 	"strings"
 	"time"
 
+	"syscall"
+
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"github.com/pkg/xattr"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/api/v1/helper"
-	"syscall"
 )
 
 /* Our constants */
@@ -108,6 +109,7 @@ func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.P
 		glog.Errorf("failed to chmod %s, %s", path, err)
 		return nil, err
 	}
+	glog.Infof("successfully chmoded %s", path)
 
 	/* Set CephFS quota, if enabled */
 	if params.cephFSQuota {
@@ -156,13 +158,13 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 	ann, ok := volume.Annotations[provisionerIDAnn]
 	if !ok {
 		glog.Infof("not removing volume <%s>: identity annotation <%s> missing",
-			   volume.Name, provisionerIDAnn)
+			volume.Name, provisionerIDAnn)
 		return errors.New("identity annotation not found on PV")
 	}
 
 	if ann != p.identity {
 		glog.Infof("not removing volume <%s>: identity annotation <%s> does not match ours <%s>",
-			   volume.Name, p.identity, provisionerIDAnn)
+			volume.Name, p.identity, provisionerIDAnn)
 		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
 	}
 
@@ -176,14 +178,14 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 		metav1.GetOptions{})
 	if err != nil {
 		glog.Infof("not removing volume <%s>: failed to fetch storageclass: %s",
-			   volume.Name, err)
+			volume.Name, err)
 		return err
 	}
 
 	params, err := p.parseParameters(class.Parameters)
 	if err != nil {
 		glog.Infof("not removing volume <%s>: failed to parse storageclass parameters: %s",
-			   volume.Name, err)
+			volume.Name, err)
 		return err
 	}
 
