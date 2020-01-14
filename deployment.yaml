@@ -1,79 +1,76 @@
-# vim:set sw=2 ts=2 et:
-#
-# Copyright (c) 2017 Torchbox Ltd.
-#
-# Permission is granted to anyone to use this software for any purpose,
-# including commercial applications, and to alter it and redistribute it
-# freely. This software is provided 'as-is', without any express or implied
-# warranty.
-
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hostpath-provisioner
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: kube-system
   name: hostpath-provisioner
-
+  namespace: hostpath-provisioner
 ---
-
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata:
-  name: hostpath-provisioner
-subjects:
-- kind: ServiceAccount
-  name: hostpath-provisioner
-  namespace: kube-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:persistent-volume-provisioner
-
----
-
-# The default system:persistent-volume-provisioner role in Kubernetes 1.8 is
-# insufficient:
-#
-# I1007 18:09:10.073558       1 controller.go:874] cannot start watcher for PVC default/testpvc: events is forbidden: User "system:serviceaccount:kube-system:hostpath-provisioner" cannot list events in the namespace "default": access denied
-
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
-metadata:
-  name: hostpath-provisioner-extra
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-  - update
-  - list
-  - get
-  - watch
-
----
-
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
 metadata:
-  name: hostpath-provisioner-extra
-subjects:
-- kind: ServiceAccount
-  namespace: kube-system
   name: hostpath-provisioner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: hostpath-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: hostpath-provisioner
+    namespace: hostpath-provisioner
 roleRef:
-  apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: hostpath-provisioner-extra
+  name: hostpath-provisioner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-hostpath-provisioner
+  namespace: hostpath-provisioner
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "update", "patch", "list", "watch", "create"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-hostpath-provisioner
+  namespace: hostpath-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: hostpath-provisioner
+    namespace: hostpath-provisioner
+roleRef:
+  kind: Role
+  name: leader-locking-hostpath-provisioner
+  apiGroup: rbac.authorization.k8s.io
 
 ---
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hostpath-provisioner
-  namespace: kube-system
+  namespace: hostpath-provisioner
 spec:
   replicas: 1
   selector:
@@ -85,37 +82,31 @@ spec:
     metadata:
       labels:
         app: hostpath-provisioner
-
     spec:
       serviceAccountName: hostpath-provisioner
       volumes:
-      - name: volumes
-        hostPath:
-          path: /mnt/cephfs/
-
-      containers:
-      - name: hostpath-provisioner
-        image: roruk/hostpath-provisioner
-        imagePullPolicy: Always
-        volumeMounts:
         - name: volumes
-          mountPath: /mnt/cephfs
-        resources:
-          limits:
-            cpu: 100m
-            memory: 64Mi
-          requests:
-            cpu: 100m
-            memory: 64Mi
-
+          hostPath:
+            path: /mnt/cephfs/
+      containers:
+        - name: hostpath-provisioner
+          imagePullPolicy: Always
+          image: roruk/hostpath-provisioner
+          volumeMounts:
+            - name: volumes
+              mountPath: /mnt/cephfs
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
 ---
-
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: cephfs
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: torchbox.com/hostpath
 parameters:
   pvDir: /mnt/cephfs
