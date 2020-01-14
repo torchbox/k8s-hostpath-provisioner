@@ -24,22 +24,18 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 	"time"
 
 	"syscall"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/external-storage/lib/controller"
-	"github.com/pkg/xattr"
+	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/api/v1/helper"
 )
 
 /* Our constants */
@@ -51,22 +47,21 @@ const (
 
 /* Our provisioner class, which implements the controller API. */
 type hostPathProvisioner struct {
-	client   kubernetes.Interface /* Kubernetes client for accessing the cluster during provision */
+	//client   kubernetes.Interface /* Kubernetes client for accessing the cluster during provision */
 	identity string               /* Our unique provisioner identity */
 }
 
 /* Storage the parsed configuration from the storage class */
 type hostPathParameters struct {
-	pvDir       string /* On-disk path of the PV root */
-	cephFSQuota bool   /* Whether to set CephFS quota xattrs */
+	pvDir string /* On-disk path of the PV root */
 }
 
 /*
  * Create a new provisioner from a given client and identity.
  */
-func NewHostPathProvisioner(client kubernetes.Interface, id string) controller.Provisioner {
+func NewHostPathProvisioner(id string) controller.Provisioner {
 	return &hostPathProvisioner{
-		client:   client,
+		//client:   client,
 		identity: id,
 	}
 }
@@ -78,49 +73,32 @@ var _ controller.Provisioner = &hostPathProvisioner{}
  * volume referencing it as a hostPath.  The volume is annotated with our
  * provisioner id, so multiple provisioners can run on the same cluster.
  */
-func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
-	/*
-	 * Fetch the PV root directory from the PV storage class.
-	 */
-	params, err := p.parseParameters(options.Parameters)
-	if err != nil {
-		return nil, err
-	}
-
+func (p *hostPathProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
 	/*
 	 * Extract the PV capacity as bytes.  We can use this to set CephFS
 	 * quotas.
 	 */
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volbytes := capacity.Value()
-	glog.Infof("pv storage: %+v", volbytes)
 
 	if volbytes <= 0 {
 		return nil, fmt.Errorf("storage capacity must be >= 0 (not %+v)", capacity.String())
 	}
 
+	/*
+	 * Fetch the PV root directory from the PV storage class.
+	 */
 	/* Create the on-disk directory. */
-	path := path.Join(params.pvDir, options.PVName)
-	if err := os.MkdirAll(path, 0777); err != nil {
-		glog.Errorf("failed to mkdir %s: %s", path, err)
+	volumePath := path.Join(options.StorageClass.Parameters["pvDir"], options.PVName)
+	if err := os.MkdirAll(volumePath, 0777); err != nil {
+		glog.Errorf("failed to mkdir %s: %s", volumePath, err)
 		return nil, err
 	}
-	if err := os.Chmod(path, 0777); err != nil {
-		glog.Errorf("failed to chmod %s, %s", path, err)
+	if err := os.Chmod(volumePath, 0777); err != nil {
+		glog.Errorf("failed to chmod %s, %s", volumePath, err)
 		return nil, err
 	}
-	glog.Infof("successfully chmoded %s", path)
-
-	/* Set CephFS quota, if enabled */
-	if params.cephFSQuota {
-		err := xattr.Set(path, "ceph.quota.max_bytes", []byte(strconv.FormatInt(volbytes, 10)))
-		if err != nil {
-			glog.Errorf("could not set CephFS quota on %s (%s): %s",
-				options.PVName, path, err)
-			os.RemoveAll(path)
-			return nil, err
-		}
-	}
+	glog.Infof("successfully chmoded %s", volumePath)
 
 	/* The actual PV we will create */
 	pv := &v1.PersistentVolume{
@@ -131,21 +109,21 @@ func (p *hostPathProvisioner) Provision(options controller.VolumeOptions) (*v1.P
 			},
 		},
 		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
+			PersistentVolumeReclaimPolicy: *options.StorageClass.ReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: path,
+					Path: volumePath,
 				},
 			},
 		},
 	}
 
 	glog.Infof("successfully created hostpath volume %s (%s)",
-		options.PVName, path)
+		options.PVName, volumePath)
 
 	return pv, nil
 }
@@ -161,76 +139,21 @@ func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
 			volume.Name, provisionerIDAnn)
 		return errors.New("identity annotation not found on PV")
 	}
-
+	glog.Infof("Remove volume %s", volume.Name)
 	if ann != p.identity {
 		glog.Infof("not removing volume <%s>: identity annotation <%s> does not match ours <%s>",
 			volume.Name, p.identity, provisionerIDAnn)
 		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
 	}
 
-	/*
-	 * Fetch the PV class to get the pvDir.  I don't think there would be
-	 * any security implications from using the hostPath in the volume
-	 * directly, but this feels more correct.
-	 */
-	class, err := p.client.StorageV1beta1().StorageClasses().Get(
-		helper.GetPersistentVolumeClass(volume),
-		metav1.GetOptions{})
-	if err != nil {
-		glog.Infof("not removing volume <%s>: failed to fetch storageclass: %s",
-			volume.Name, err)
-		return err
-	}
-
-	params, err := p.parseParameters(class.Parameters)
-	if err != nil {
-		glog.Infof("not removing volume <%s>: failed to parse storageclass parameters: %s",
-			volume.Name, err)
-		return err
-	}
-
-	/*
-	 * Construct the on-disk path based on the pvDir and volume name, then
-	 * delete it.
-	 */
-	path := path.Join(params.pvDir, volume.Name)
-	if err := os.RemoveAll(path); err != nil {
+	volumePath := volume.Spec.HostPath.Path
+	if err := os.RemoveAll(volumePath); err != nil {
 		glog.Errorf("failed to remove PV %s (%s): %v",
-			volume.Name, path, err)
+			volume.Name, volumePath, err)
 		return err
 	}
 
 	return nil
-}
-
-func (p *hostPathProvisioner) parseParameters(parameters map[string]string) (*hostPathParameters, error) {
-	var params hostPathParameters
-
-	for k, v := range parameters {
-		switch strings.ToLower(k) {
-		case "pvdir":
-			params.pvDir = v
-
-		case "cephfsquota":
-			switch v {
-			case "true":
-				params.cephFSQuota = true
-			case "false":
-				params.cephFSQuota = false
-			default:
-				return nil, fmt.Errorf("invalid value for cephFSQuota: %s (should be true or false)", v)
-			}
-
-		default:
-			return nil, fmt.Errorf("invalid option %q", k)
-		}
-	}
-
-	if params.pvDir == "" {
-		return nil, fmt.Errorf("missing PV directory (pvDir)")
-	}
-
-	return &params, nil
 }
 
 var (
@@ -241,7 +164,7 @@ var (
 )
 
 func main() {
-	syscall.Umask(022)
+	syscall.Umask(0)
 
 	flag.Parse()
 	flag.Set("logtostderr", "true")
@@ -291,7 +214,7 @@ func main() {
 	 * Create the provisioner, which has a standard interface (Provision,
 	 * Delete) used by the controller to notify us what to do.
 	 */
-	hostPathProvisioner := NewHostPathProvisioner(clientset, prID)
+	hostPathProvisioner := NewHostPathProvisioner(prID)
 
 	/* Start the controller */
 	pc := controller.NewProvisionController(
