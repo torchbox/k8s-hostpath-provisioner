@@ -1,6 +1,28 @@
 Kubernetes hostpath provisioner
 ===============================
 
+SOURCES
+----------
+
+The source of project is https://github.com/torchbox/k8s-hostpath-provisioner, The above project is deprecated and uses libraries that no longer work with newer versions of k8s
+
+Changes based on:
+* https://github.com/RoRu/k8s-hostpath-provisioner
+* https://github.com/xplodwild/k8s-hostpath-provisioner
+
+Changes implements using sigs.k8s.io/sig-storage-lib-external-provisioner according to example examples/hostpath-provisioner/hostpath-provisioner.go
+
+I changed the sig-storage-lib-external-provisioner version to v7, the newest one at the moment, and added the code to it and changed storage.k8s.io/v1beta1 to storage.k8s.io/v1 (p.client.StorageV1 ()) 
+
+Image pusher to owps/k8s-hostpath-provisioner on dockerhub.com
+
+Example deployment manifest in example-deployment.yaml
+
+Original documentation below:
+
+ORGINAL
+----------
+
 This is a Persistent Volume Claim (PVC) provisioner for Kubernetes.  It
 dynamically provisions hostPath volumes to provide storage for PVCs.  It is
 based on the

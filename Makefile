@@ -15,20 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-REPOSITORY	?= torchbox/k8s-hostpath-provisioner
+REPOSITORY	?= owps/k8s-hostpath-provisioner
 TAG		?= latest
 IMAGE		= ${REPOSITORY}:${TAG}
 
-image: hostpath-provisioner
+image:
 	docker build -t $(IMAGE) -f Dockerfile .
 
-vendor:
-	glide install -v
-
-hostpath-provisioner: hostpath-provisioner.go
-	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o hostpath-provisioner .
-
-clean:
-	rm hostpath-provisioner
-
-.PHONY: clean vendor image
+.PHONY: image
