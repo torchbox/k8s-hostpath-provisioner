@@ -35,14 +35,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
 )
 
 /* Our constants */
 const (
 	resyncPeriod     = 15 * time.Second
-	provisionerName  = "torchbox.com/hostpath"
-	provisionerIDAnn = "torchbox.com/hostpath-provisioner-id"
+	provisionerName  = "roruk/hostpath"
+	provisionerIDAnn = "roruk/hostpath-provisioner-id"
 )
 
 /* Our provisioner class, which implements the controller API. */
@@ -61,7 +61,6 @@ type hostPathParameters struct {
  */
 func NewHostPathProvisioner(id string) controller.Provisioner {
 	return &hostPathProvisioner{
-		//client:   client,
 		identity: id,
 	}
 }
@@ -187,15 +186,6 @@ func main() {
 	}
 
 	/*
-	 * The controller needs to know what the server version is because out-of-tree
-	 * provisioners aren't officially supported until 1.5
-	 */
-	serverVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("error getting server version: %v", err)
-	}
-
-	/*
 	 * Default provisioner id to the name; the user can override with the
 	 * -id option.
 	 */
@@ -219,8 +209,7 @@ func main() {
 	pc := controller.NewProvisionController(
 		clientset,
 		prName,
-		hostPathProvisioner,
-		serverVersion.GitVersion)
+		hostPathProvisioner)
 
 	pc.Run(context.Background())
 }

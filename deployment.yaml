@@ -109,6 +109,6 @@ metadata:
   name: example
   annotations:
     storageclass.kubernetes.io/is-default-class: "false"
-provisioner: torchbox.com/hostpath
+provisioner: roruk/hostpath
 parameters:
   pvDir: /mnt/example
