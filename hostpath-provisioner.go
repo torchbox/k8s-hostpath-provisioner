@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -29,13 +30,12 @@ import (
 	"syscall"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 )
 
 /* Our constants */
@@ -48,7 +48,7 @@ const (
 /* Our provisioner class, which implements the controller API. */
 type hostPathProvisioner struct {
 	//client   kubernetes.Interface /* Kubernetes client for accessing the cluster during provision */
-	identity string               /* Our unique provisioner identity */
+	identity string /* Our unique provisioner identity */
 }
 
 /* Storage the parsed configuration from the storage class */
@@ -73,16 +73,15 @@ var _ controller.Provisioner = &hostPathProvisioner{}
  * volume referencing it as a hostPath.  The volume is annotated with our
  * provisioner id, so multiple provisioners can run on the same cluster.
  */
-func (p *hostPathProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
+func (p *hostPathProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
 	/*
 	 * Extract the PV capacity as bytes.  We can use this to set CephFS
 	 * quotas.
 	 */
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volbytes := capacity.Value()
-
 	if volbytes <= 0 {
-		return nil, fmt.Errorf("storage capacity must be >= 0 (not %+v)", capacity.String())
+		return nil, controller.ProvisioningFinished, fmt.Errorf("storage capacity must be >= 0 (not %+v)", capacity.String())
 	}
 
 	/*
@@ -92,11 +91,11 @@ func (p *hostPathProvisioner) Provision(options controller.ProvisionOptions) (*v
 	volumePath := path.Join(options.StorageClass.Parameters["pvDir"], options.PVName)
 	if err := os.MkdirAll(volumePath, 0777); err != nil {
 		glog.Errorf("failed to mkdir %s: %s", volumePath, err)
-		return nil, err
+		return nil, controller.ProvisioningFinished, err
 	}
 	if err := os.Chmod(volumePath, 0777); err != nil {
 		glog.Errorf("failed to chmod %s, %s", volumePath, err)
-		return nil, err
+		return nil, controller.ProvisioningFinished, err
 	}
 	glog.Infof("successfully chmoded %s", volumePath)
 
@@ -125,13 +124,13 @@ func (p *hostPathProvisioner) Provision(options controller.ProvisionOptions) (*v
 	glog.Infof("successfully created hostpath volume %s (%s)",
 		options.PVName, volumePath)
 
-	return pv, nil
+	return pv, controller.ProvisioningFinished, nil
 }
 
 /*
  * Delete: remove a PV from the disk by deleting its directory.
  */
-func (p *hostPathProvisioner) Delete(volume *v1.PersistentVolume) error {
+func (p *hostPathProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume) error {
 	/* Ensure this volume was provisioned by us */
 	ann, ok := volume.Annotations[provisionerIDAnn]
 	if !ok {
@@ -223,5 +222,5 @@ func main() {
 		hostPathProvisioner,
 		serverVersion.GitVersion)
 
-	pc.Run(wait.NeverStop)
+	pc.Run(context.Background())
 }
