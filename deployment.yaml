@@ -90,8 +90,10 @@ spec:
             path: /mnt/example/
       containers:
         - name: hostpath-provisioner
-          imagePullPolicy: Never
-          image: roruk/hostpath-provisioner:update-deps
+          args:
+            - -name=roruk/hostpath
+          imagePullPolicy: Always
+          image: roruk/hostpath-provisioner:go-1.17-k8s-1.20
           volumeMounts:
             - name: volumes
               mountPath: /mnt/example

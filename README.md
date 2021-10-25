@@ -85,7 +85,7 @@ metadata:
   name: cephfs
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: torchbox.com/hostpath
+provisioner: roruk/hostpath
 parameters:
   pvDir: /ceph/pvs
 ```
@@ -103,7 +103,7 @@ parameters:
   storage or the mountpoint.
 
 * Unless you're running multiple provisioners, leave `provisioner` at the
-  default `torchbox.com/hostpath`.  If you want to run multiple provisioners,
+  default `roruk/hostpath`.  If you want to run multiple provisioners,
   the value passed to `-name` when starting the provisioner must match the
   value of `provisioner`.
 
